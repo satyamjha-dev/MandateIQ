@@ -1,221 +1,280 @@
-# MandateIQ — Development Environment Setup
+# MandateIQ — AutoDebit Intelligence (Phase 1)
 
 > **Project Name:** MandateIQ  
 > **Problem Statement:** T4.1 — The Auto Debits Nobody Can Find  
-> **Phase:** Development Environment Setup Only
+> **Status:** Phase 1 Complete (Statement Ingestion, Extraction, Normalization & Merchant Identification)
 
 ---
 
-## 1. Overview
+## 1. Project Overview & Objectives
 
-MandateIQ is a FinTech system designed to analyze transaction histories, identify recurring financial commitments, clarify merchant identities, detect subscription anomalies, and guide cancellations.
+MandateIQ is a FinTech intelligence system designed to illuminate hidden, forgotten, or ambiguous recurring financial commitments from raw statements. 
 
-This repository currently contains the **foundational development environment**:
-- **Frontend:** Next.js (App Router), React, TypeScript, and Tailwind CSS.
-- **Backend:** Next.js Route Handlers and server-side runtime.
-- **Database:** PostgreSQL running in a dedicated Docker container.
-- **ORM:** Prisma 7 with the `@prisma/adapter-pg` driver adapter.
-- **Tooling & Validation:** Zod, Papa Parse, Vitest, and Lucide React.
-
-> **Scope Note:** In accordance with the project roadmap, no application business logic (such as recurring payment detection, CSV ingestion pipelines, or specific database schemas) is included in this phase. Application features will be designed and implemented in subsequent steps.
-
----
-
-## 2. Prerequisites
-
-Ensure you have the following installed on your machine:
-
-| Requirement | Minimum Version | Verified Version | Notes |
-| :--- | :--- | :--- | :--- |
-| **Node.js** | `v20.x` or `v22.x` | `v22.14.0` | Active LTS recommended |
-| **npm** | `v10.x` | `v10.9.2` | Bundled with Node |
-| **Docker & Docker Compose** | Docker Desktop / Engine | Latest | Required for running PostgreSQL |
+**Phase 1 Focus:**
+Phase 1 delivers the complete ingestion, extraction, and normalization foundation:
+1. **PDF Statement Ingestion:** Parses digital PDF statements from Google Pay receipts, PhonePe transaction statements, and standard Indian bank statements.
+2. **CSV Statement Ingestion:** Detects and parses Standard CSV, Bank A (Debit/Credit columns), and Bank B (Withdrawal/Deposit columns) formats.
+3. **Transaction Normalization:** Deterministically normalizes narrations, ISO/flexible dates, and decimal amount strings without losing raw narrations.
+4. **Merchant Identification:** Uses a curated reference dataset and conservative alias matching to identify merchants (e.g., Netflix, Spotify, Amazon, Google, Microsoft, Swiggy, Zomato) while preserving unknown merchants as `Unknown`.
+5. **PostgreSQL Persistence:** Atomic batch persistence using Prisma ORM 7 with `@prisma/adapter-pg`.
+6. **Financial Dashboard & History:** Real aggregated stats (total debits, total credits, batch counts) and paginated transaction history without fabricated data.
 
 ---
 
-## 3. Project Directory Structure
+## 2. Supported Statement Formats
+
+### Format A — Google Pay-style Receipts (PDF)
+- **Cues:** Brand tokens or `Paid to` / `Received from` + `UPI Transaction ID`.
+- **Extracted Fields:** Recipient name, Date (`24 Aug, 2026`), UPI Transaction ID (`623660426874`), Bank Source (`Kotak Mahindra Bank 0667`), and Amount (`INR 564.00`).
+- **Transaction Type:** `Paid to` &rarr; `DEBIT`, `Received from` &rarr; `CREDIT`.
+
+### Format B — PhonePe-style Statements (PDF)
+- **Cues:** Brand tokens or `Transaction ID: T...` + `UTR:` numbers.
+- **Extracted Fields:** Recipient name (`Paid to SAITM`), Date (`Aug 29, 2026`), Amount with comma parsing (`INR 60,500` &rarr; `60500.00`), Transaction ID (`T2608291609522447721902`), and UTR (`479923133777`).
+- **Safe Amount Isolation:** Does not mistake UTR, masked accounts (`...6637`), or transaction IDs for monetary amounts.
+
+### Format C — Tabular Bank Statements (PDF)
+- **Cues:** Date patterns + `Amount:` + `Type: DEBIT/CREDIT` + `Balance:` + `UPI/DR/` narrations or tabular column lines.
+- **Extracted Fields:** Date (`01-04-2026`), Transaction Amount (`INR 50.00`), Type (`DEBIT`), UPI RRN / Reference number (`073479210545`), and raw description.
+- **Balance Isolation:** Distinguishes actual transaction amounts from running balances (`INR 99016.09`).
+
+### CSV Statements
+1. **Standard Format:**
+   ```csv
+   date,description,amount,type,currency
+   2026-09-01,NETFLIX,499.00,DEBIT,INR
+   2026-09-05,SALARY,45000.00,CREDIT,INR
+   ```
+2. **Bank A Format (Dual columns, DD/MM/YYYY):**
+   ```csv
+   Transaction Date,Narration,Debit,Credit
+   01/09/2026,NETFLIX.COM,499.00,
+   05/09/2026,SALARY CREDIT,,45000.00
+   ```
+3. **Bank B Format (DD-Mon-YYYY, Quoted amounts):**
+   ```csv
+   Txn Date,Particulars,Withdrawal,Deposit
+   01-Sep-2026,NETFLIX,499.00,
+   05-Sep-2026,SALARY,,"45000.00"
+   ```
+
+> **Sample Files:** Synthetic statement files for all 6 formats are available in `public/samples/` and can be downloaded directly from the `/import` page.
+
+---
+
+## 3. Architecture & Ingestion Pipeline
 
 ```text
-MandateIq/
-├── docker-compose.yml       # Docker Compose definition for PostgreSQL 16
-├── prisma.config.ts         # Prisma 7 centralized configuration (datasource & migrations)
-├── prisma/
-│   └── schema.prisma        # Prisma schema file (datasource and client generators)
-├── src/
-│   ├── app/
-│   │   ├── globals.css      # Tailwind base styles and theme variables
-│   │   ├── layout.tsx       # Root layout shell
-│   │   └── page.tsx         # Development environment verification landing page
-│   ├── lib/
-│   │   └── db.ts            # Reusable Prisma 7 client with @prisma/adapter-pg driver adapter
-│   └── test/
-│       ├── setup.test.ts    # Vitest, Zod, and Papa Parse integration tests
-│       └── db.test.ts       # Database connectivity test
-├── public/                  # Static assets directory
-├── .env.example             # Documented environment variables template
-├── .gitignore               # Excludes secrets, node_modules, and build outputs
-├── package.json             # Scripts and dependencies
-├── tsconfig.json            # TypeScript compiler configuration with @/* alias
-├── tailwind.config.ts       # Tailwind CSS configuration
-├── postcss.config.mjs       # PostCSS plugins (Tailwind & Autoprefixer)
-├── eslint.config.mjs        # Next.js flat ESLint configuration
-├── vitest.config.ts         # Vitest test runner configuration
-└── README.md                # Environment documentation
+Uploaded Statement File (.pdf or .csv)
+   │
+   ▼
+[File Signature & Size Validation] ── (Rejects > 10MB or non-PDF/CSV)
+   │
+   ├── If PDF: [unpdf / pdfjs-dist Text Extraction]
+   │           │
+   │           ├── If Scanned / Empty ──> Reports "OCR Required"
+   │           │
+   │           └── [Layout Identification] ──> GPAY / PHONEPE / BANK_STATEMENT
+   │
+   └── If CSV: [Papa Parse Header Detection] ──> STANDARD / BANK_A / BANK_B
+   │
+   ▼
+[Source-Specific Extraction] ── (Isolates Date, Description, Amount, Type, Reference ID)
+   │
+   ▼
+[Normalization & Merchant Identification] ── (Deterministic tokens, curated alias matching)
+   │
+   ▼
+[Zod Transaction Validation] ── (Valid vs Invalid Rows distinction)
+   │
+   ▼
+[Frontend Preview at /import] ── (User reviews extracted rows before persisting)
+   │
+   ▼
+[User Confirms Import]
+   │
+   ▼
+[Server-Side Re-validation & Prisma $transaction Persistence]
+   │
+   ▼
+[PostgreSQL Database] ──> Reflected in Dashboard (/dashboard) & History (/transactions)
 ```
 
 ---
 
-## 4. Environment Variables Configuration
+## 4. Technology Stack
 
-The repository includes a template file `.env.example`.
+- **Frontend:** Next.js 15 (App Router), React 19, TypeScript, Tailwind CSS, Lucide React.
+- **Backend:** Next.js Route Handlers (`/api/import/parse`, `/api/import/confirm`, `/api/transactions`, `/api/dashboard`).
+- **Database:** PostgreSQL 16 (running via Docker Compose) with Prisma ORM 7 (`@prisma/adapter-pg` driver adapter).
+- **PDF Extraction:** `unpdf` (powered by `pdfjs-dist`).
+- **CSV Processing:** `papaparse`.
+- **Validation:** `zod`.
+- **Testing:** `vitest`.
 
-### Step 1: Create your local `.env` file
+---
+
+## 5. Development Setup & Commands
+
+### Prerequisites
+- Node.js `v20.x` or `v22.x` (verified on `v22.14.0`)
+- npm `v10.x` (verified on `10.9.2`)
+- Docker Desktop or Docker Engine
+
+### 1. Environment Configuration
 ```bash
 cp .env.example .env
 ```
-
-### Step 2: Understand the configuration variables
+Ensure your `.env` contains:
 ```ini
-# PostgreSQL credentials for Docker Compose container
 POSTGRES_USER=postgres
-POSTGRES_PASSWORD=your_secure_password_here
+POSTGRES_PASSWORD=postgres
 POSTGRES_DB=mandateiq_db
-
-# Local connection string used by Prisma 7 runtime and CLI
-# Notice host is localhost and port is 5432
-DATABASE_URL="postgresql://postgres:your_secure_password_here@localhost:5432/mandateiq_db?schema=public"
-
-# Direct URL for CLI migrations (matches DATABASE_URL for local setup)
-DIRECT_URL="postgresql://postgres:your_secure_password_here@localhost:5432/mandateiq_db?schema=public"
-
-# Node environment
+DATABASE_URL="postgresql://postgres:postgres@localhost:5432/mandateiq_db?schema=public"
+DIRECT_URL="postgresql://postgres:postgres@localhost:5432/mandateiq_db?schema=public"
 NODE_ENV=development
 ```
 
-> **Security Guardrails:**
-> - `.env` is ignored by Git in `.gitignore`. Never commit `.env` or credentials to version control.
-> - Database credentials remain strictly server-side and must never be exposed to client-side bundles (do not prefix with `NEXT_PUBLIC_`).
-
----
-
-## 5. Starting and Managing PostgreSQL with Docker
-
-PostgreSQL 16 runs isolated inside Docker using `docker-compose.yml`, storing data in a persistent Docker volume (`mandateiq_postgres_data`).
-
-### Start PostgreSQL
+### 2. Docker PostgreSQL Management
 ```bash
+# Start PostgreSQL container
 npm run db:up
-# Or directly via Docker Compose:
-docker compose up -d
-```
+# (or: docker compose up -d)
 
-### Check Container Status and Health
-```bash
+# Inspect container health
 docker compose ps
-```
-The status should indicate `Up ... (healthy)` and show the port binding `0.0.0.0:5432->5432/tcp`.
 
-### View Database Logs
-```bash
+# View container logs
 npm run db:logs
-# Or directly:
-docker compose logs -f
-```
 
-### Stop PostgreSQL (Preserving Data)
-```bash
+# Stop container (data preserved)
 npm run db:down
-# Or directly:
-docker compose down
 ```
 
-### Stop PostgreSQL and Delete Data (Fresh Reset)
+### 3. Database Migrations & Client Generation
 ```bash
-docker compose down -v
-```
-> **Warning:** `docker compose down -v` permanently removes the `mandateiq_postgres_data` volume and erases all database tables and records.
-
----
-
-## 6. Prisma 7 Configuration
-
-Prisma 7 introduces substantial architectural improvements over earlier versions:
-1. **Decoupled Datasource Configuration (`prisma.config.ts`):**  
-   Connection URLs are defined in `prisma.config.ts` rather than `schema.prisma`.
-2. **Mandatory Driver Adapters (`@prisma/adapter-pg`):**  
-   Prisma 7 delegates database network operations and connection pooling directly to the Node PostgreSQL driver (`pg`).
-3. **Reusable Client Singleton (`src/lib/db.ts`):**  
-   Prevents connection pool exhaustion during Next.js Hot Module Replacement (HMR) in development.
-
-### Prisma Commands
-```bash
-# Generate the Prisma Client
+# Generate Prisma Client
 npm run prisma:generate
 
-# Run schema migrations (once database models are defined in future steps)
+# Apply database migrations
 npm run prisma:migrate
 
 # Open Prisma Studio GUI
 npm run prisma:studio
 ```
 
----
-
-## 7. Development Server and Verification
-
-### Dependency Installation
-```bash
-npm install
-```
-
-### Running Tests
-Execute the Vitest test suite to verify testing framework, schema validation, CSV parsing, and database connectivity:
-```bash
-npm run test
-```
-
-### Linting
-```bash
-npm run lint
-```
-
-### Production Build Verification
-```bash
-npm run build
-```
-
-### Starting the Next.js Development Server
+### 4. Running the Development Server
 ```bash
 npm run dev
 ```
-Open [http://localhost:3000](http://localhost:3000) in your browser. You will see the MandateIQ environment status page.
+Visit [http://localhost:3000](http://localhost:3000) to view MandateIQ.
+
+### 5. Running Automated Tests & Quality Checks
+```bash
+# Run complete Vitest suite (41 tests across 7 suites)
+npm run test
+
+# Run ESLint check
+npm run lint
+
+# Build production application
+npm run build
+```
 
 ---
 
-## 8. Troubleshooting
+## 6. API Endpoints
 
-### Port 5432 is already allocated
-If `docker compose up -d` fails with `Bind for 0.0.0.0:5432 failed: port is already allocated`:
-- Another service or PostgreSQL instance is already bound to port 5432.
-- Inspect the process with `lsof -i :5432`.
-- If another Docker container is using the port, inspect running containers via `docker ps` and stop the conflicting container with `docker stop <container_name>`.
+### `POST /api/import/parse`
+Parses an uploaded statement file and returns a structured preview without saving to the database.
+- **Request:** `multipart/form-data` with `file`.
+- **Response:**
+  ```json
+  {
+    "success": true,
+    "draft": {
+      "filename": "gpay-sample.pdf",
+      "source": "GPAY",
+      "totalParsed": 2,
+      "validCount": 2,
+      "invalidCount": 0,
+      "rows": [
+        {
+          "rowNumber": 1,
+          "status": "VALID",
+          "transaction": {
+            "transactionDate": "2026-08-24T00:00:00.000Z",
+            "rawDescription": "Paid to Manjeet",
+            "normalizedDescription": "PAID TO MANJEET",
+            "amount": "564.00",
+            "currency": "INR",
+            "transactionType": "DEBIT",
+            "referenceId": "623660426874",
+            "source": "GPAY",
+            "merchantName": null
+          }
+        }
+      ]
+    }
+  }
+  ```
 
-### Database Connection Refused (`ECONNREFUSED 127.0.0.1:5432`)
-- Verify the Docker container is running: `docker compose ps`.
-- If the container is stopped or exited, run `docker compose up -d`.
-- Check health logs: `docker compose logs`.
+### `POST /api/import/confirm`
+Re-validates client-submitted transactions server-side and atomically saves `ImportBatch` and `Transaction` records inside a PostgreSQL transaction.
+- **Request Body:**
+  ```json
+  {
+    "filename": "gpay-sample.pdf",
+    "source": "GPAY",
+    "transactions": [ ... ]
+  }
+  ```
+- **Response:**
+  ```json
+  {
+    "success": true,
+    "batchId": "c4d1...",
+    "persistedCount": 2,
+    "message": "Successfully imported and persisted 2 transactions from \"gpay-sample.pdf\"."
+  }
+  ```
 
-### `PrismaConfigEnvError: Cannot resolve environment variable: DATABASE_URL`
-- Ensure a `.env` file exists at the root of the project with a valid `DATABASE_URL`.
-- Run `cp .env.example .env` and configure your credentials.
+### `GET /api/dashboard`
+Returns real computed metrics from PostgreSQL:
+```json
+{
+  "success": true,
+  "stats": {
+    "totalTransactions": 14,
+    "totalBatches": 3,
+    "totalDebits": "63200.00",
+    "totalCredits": "90000.00"
+  },
+  "recentTransactions": [ ... ]
+}
+```
+
+### `GET /api/transactions`
+Returns paginated transactions with merchant details:
+- Query parameters: `page=1`, `limit=20`, `type=DEBIT|CREDIT`, `source=GPAY|PHONEPE|BANK_STATEMENT|CSV`.
 
 ---
 
-## 9. Next Steps
+## 7. Troubleshooting
 
-With the development environment verified and running:
-1. Design Phase 1 data models in `prisma/schema.prisma`.
-2. Apply database migrations via `npm run prisma:migrate`.
-3. Implement synthetic CSV statement parsing and normalization.
-4. Build the Phase 1 dashboard and transaction inspection views.
+| Symptom | Cause | Solution |
+| :--- | :--- | :--- |
+| `Bind for 0.0.0.0:5432 failed: port is already allocated` | Another service is using port 5432 | Run `lsof -i :5432` or `docker ps` and stop conflicting services. |
+| `The uploaded PDF does not contain extractable text` | PDF is a scanned image without selectable text | Document is an image scan; OCR is required (not supported in Phase 1). |
+| `PrismaConfigEnvError: Cannot resolve environment variable` | Missing `.env` file | Run `cp .env.example .env` with database credentials. |
 
+---
+
+## 8. Phase 1 Boundaries & Future Phases
+
+**Intentionally Excluded from Phase 1 (Scheduled for Later Phases):**
+- Recurring-payment cadence detection (weekly, monthly, annual)
+- Silent price increase detection
+- Subscription cancellation guides and flows
+- Account Aggregator / real bank APIs
+- LLM-based categorization

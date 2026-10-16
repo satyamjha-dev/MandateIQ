@@ -1,0 +1,136 @@
+[
+  {
+    "canonicalName": "Netflix",
+    "category": "Entertainment & Streaming",
+    "aliases": [
+      "NETFLIX",
+      "NETFLIX.COM",
+      "NETFLIX INDIA",
+      "NETFLIX ENTERTAINMENT",
+      "NFLX"
+    ]
+  },
+  {
+    "canonicalName": "Spotify",
+    "category": "Music & Audio",
+    "aliases": [
+      "SPOTIFY",
+      "SPOTIFY INDIA",
+      "SPOTIFY AB",
+      "SPOTIFY PREMIUM",
+      "SPOTIFY.COM"
+    ]
+  },
+  {
+    "canonicalName": "Amazon",
+    "category": "E-Commerce & Cloud",
+    "aliases": [
+      "AMAZON",
+      "AMAZON PAY",
+      "AMAZON PRIME",
+      "AMAZON INDIA",
+      "AMZN",
+      "AWS",
+      "AMAZON WEB SERVICES"
+    ]
+  },
+  {
+    "canonicalName": "Google",
+    "category": "Technology & Services",
+    "aliases": [
+      "GOOGLE",
+      "GOOGLE PLAY",
+      "GOOGLE STORAGE",
+      "GOOGLE CLOUD",
+      "GOOGLE INDIA",
+      "GOOGLE WORKSPACE",
+      "YOUTUBE PREMIUM"
+    ]
+  },
+  {
+    "canonicalName": "Microsoft",
+    "category": "Software & Cloud",
+    "aliases": [
+      "MICROSOFT",
+      "MSFT",
+      "MSFT AZURE",
+      "MICROSOFT 365",
+      "XBOX",
+      "MICROSOFT INDIA"
+    ]
+  },
+  {
+    "canonicalName": "Zomato",
+    "category": "Food & Dining",
+    "aliases": [
+      "ZOMATO",
+      "ZOMATO LIMITED",
+      "ZOMATO GOLD",
+      "ZOMATO RESTAURANT",
+      "ZOMATO HYPERPURE"
+    ]
+  },
+  {
+    "canonicalName": "Swiggy",
+    "category": "Food & Delivery",
+    "aliases": [
+      "SWIGGY",
+      "BUNDL TECHNOLOGIES",
+      "SWIGGY ONE",
+      "SWIGGY INSTAMART",
+      "SWIGGY DINEOUT"
+    ]
+  },
+  {
+    "canonicalName": "Disney+ Hotstar",
+    "category": "Entertainment & Streaming",
+    "aliases": [
+      "HOTSTAR",
+      "DISNEY+ HOTSTAR",
+      "DISNEY HOTSTAR",
+      "NOVI DIGITAL"
+    ]
+  },
+  {
+    "canonicalName": "Apple",
+    "category": "Technology & Hardware",
+    "aliases": [
+      "APPLE",
+      "APPLE.COM/BILL",
+      "ITUNES",
+      "ICLOUD",
+      "APPLE SERVICES"
+    ]
+  },
+  {
+    "canonicalName": "Airtel",
+    "category": "Telecommunications",
+    "aliases": [
+      "AIRTEL",
+      "BHARTI AIRTEL",
+      "AIRTEL BROADBAND",
+      "AIRTEL PAYMENTS"
+    ]
+  },
+  {
+    "canonicalName": "Jio",
+    "category": "Telecommunications",
+    "aliases": [
+      "JIO",
+      "RELIANCE JIO",
+      "JIO FIBER",
+      "JIO INFICOMM"
+    ]
+  },
+  {
+    "canonicalName": "Uber",
+    "category": "Transportation & Mobility",
+    "aliases": [
+      "UBER",
+      "UBER INDIA",
+      "UBER B.V.",
+      "UBER TRIP"
+    ]
+  }
+]
+
